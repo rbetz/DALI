@@ -71,6 +71,9 @@ class DLL_PUBLIC OpSchema {
 
     AddOptionalArg("preserve", "Do not remove the Op from the "
                                "graph even if its outputs are unused.", false);
+
+    AddOptionalArg("batch_probability", "Probablity this operator will be run on a given batch of "
+                                        "images. Defaults to 1 (always runs)", 1.0f);
   }
 
   DLL_PUBLIC inline ~OpSchema() = default;

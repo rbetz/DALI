@@ -20,6 +20,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <random>
 
 #include "dali/core/common.h"
 #include "dali/core/error_handling.h"
@@ -79,7 +80,9 @@ class DLL_PUBLIC OperatorBase {
       : spec_(spec),
         num_threads_(spec.GetArgument<int>("num_threads")),
         batch_size_(spec.GetArgument<int>("batch_size")),
-        default_cuda_stream_priority_(spec.GetArgument<int>("default_cuda_stream_priority")) {
+        default_cuda_stream_priority_(spec.GetArgument<int>("default_cuda_stream_priority")),
+        op_dis_(spec.GetArgument<float>("op_probability")),
+        op_rng_(spec.GetArgument<int64_t>("seed")) {
     DALI_ENFORCE(num_threads_ > 0, "Invalid value for argument num_threads.");
     DALI_ENFORCE(batch_size_ > 0, "Invalid value for argument batch_size.");
   }
@@ -172,6 +175,8 @@ class DLL_PUBLIC OperatorBase {
   int num_threads_;
   int batch_size_;
   int default_cuda_stream_priority_;
+  std::bernoulli_distribution op_dis_;
+  std::mt19937 op_rng_;
 };
 
 #define USE_OPERATOR_MEMBERS()                       \
@@ -321,8 +326,18 @@ class Operator<GPUBackend> : public OperatorBase {
   void Run(DeviceWorkspace &ws) override {
     CheckInputLayouts(ws, spec_);
     SetupSharedSampleParams(ws);
-    RunImpl(ws);
+    op_dis_(op_rng_) ? RunImpl(ws) : RunNoOp(ws);
   }
+
+  // No-op run function that just copies input to output
+  inline void RunNoOp(DeviceWorkspace &ws) {
+    for (int i = 0; i < spec_.NumRegularInput(); i++) {
+        const auto &input = ws.template InputRef<GPUBackend>(i);
+        auto &output = ws.template OutputRef<GPUBackend>(i);
+        output.Copy(input, ws.stream());
+    }
+  }
+
 
   /**
    * @brief Setup of the operator - to be implemented by derived op.
