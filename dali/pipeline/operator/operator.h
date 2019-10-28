@@ -17,14 +17,14 @@
 
 #include <algorithm>
 #include <memory>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
-#include <random>
 
 #include "dali/core/common.h"
-#include "dali/core/format.h"
 #include "dali/core/error_handling.h"
+#include "dali/core/format.h"
 #include "dali/core/tensor_shape.h"
 #include "dali/core/tensor_shape_print.h"
 #include "dali/pipeline/data/backend.h"
@@ -83,7 +83,7 @@ class DLL_PUBLIC OperatorBase {
         num_threads_(spec.GetArgument<int>("num_threads")),
         batch_size_(spec.GetArgument<int>("batch_size")),
         default_cuda_stream_priority_(spec.GetArgument<int>("default_cuda_stream_priority")),
-        op_dis_(spec.GetArgument<float>("op_probability")),
+        op_dis_(spec.GetArgument<float>("batch_probability")),
         op_rng_(spec.GetArgument<int64_t>("seed")) {
     DALI_ENFORCE(num_threads_ > 0, "Invalid value for argument num_threads.");
     DALI_ENFORCE(batch_size_ > 0, "Invalid value for argument batch_size.");
@@ -173,7 +173,7 @@ class DLL_PUBLIC OperatorBase {
    * @param argument_name name of the Argument
    * @param ws
    */
-  template<typename T>
+  template <typename T>
   void GetPerSampleArgument(std::vector<T> &output, const std::string &argument_name,
                             const ArgumentWorkspace &ws) {
     if (spec_.HasTensorArgument(argument_name)) {
@@ -183,9 +183,8 @@ class DLL_PUBLIC OperatorBase {
       if (N == 1) {
         bool is_valid_shape = shape.tensor_shape(0) == TensorShape<1>{batch_size_};
 
-        DALI_ENFORCE(is_valid_shape,
-          make_string("`", argument_name, "` must be a 1xN or Nx1 (N = ", batch_size_,
-          ") tensor list. Got: ", shape));
+        DALI_ENFORCE(is_valid_shape, make_string("`", argument_name, "` must be a 1xN or Nx1 (N = ",
+                                                 batch_size_, ") tensor list. Got: ", shape));
 
         output.resize(batch_size_);
         auto *data = arg[0].template data<T>();
@@ -194,12 +193,10 @@ class DLL_PUBLIC OperatorBase {
           output[i] = data[i];
         }
       } else {
-        bool is_valid_shape = N == batch_size_ &&
-                              is_uniform(shape) &&
-                              shape.tensor_shape(0) == TensorShape<1>{1};
-        DALI_ENFORCE(is_valid_shape,
-          make_string("`", argument_name, "` must be a 1xN or Nx1 (N = ", batch_size_,
-          ") tensor list. Got: ", shape));
+        bool is_valid_shape =
+            N == batch_size_ && is_uniform(shape) && shape.tensor_shape(0) == TensorShape<1>{1};
+        DALI_ENFORCE(is_valid_shape, make_string("`", argument_name, "` must be a 1xN or Nx1 (N = ",
+                                                 batch_size_, ") tensor list. Got: ", shape));
 
         output.resize(batch_size_);
         for (int i = 0; i < batch_size_; i++) {
@@ -220,10 +217,10 @@ class DLL_PUBLIC OperatorBase {
   std::mt19937 op_rng_;
 };
 
-#define USE_OPERATOR_MEMBERS()                       \
-  using OperatorBase::spec_;                         \
-  using OperatorBase::num_threads_;                  \
-  using OperatorBase::batch_size_;                   \
+#define USE_OPERATOR_MEMBERS()      \
+  using OperatorBase::spec_;        \
+  using OperatorBase::num_threads_; \
+  using OperatorBase::batch_size_;  \
   using OperatorBase::default_cuda_stream_priority_
 
 /**
@@ -246,8 +243,8 @@ class Operator<CPUBackend> : public OperatorBase {
 
   inline ~Operator() override {}
 
-  using OperatorBase::Setup;
   using OperatorBase::Run;
+  using OperatorBase::Setup;
 
   bool Setup(std::vector<OutputDesc> &output_desc, const HostWorkspace &ws) override {
     return SetupImpl(output_desc, ws);
@@ -316,8 +313,8 @@ class Operator<GPUBackend> : public OperatorBase {
 
   inline ~Operator() override {}
 
-  using OperatorBase::Setup;
   using OperatorBase::Run;
+  using OperatorBase::Setup;
 
   bool Setup(std::vector<OutputDesc> &output_desc, const DeviceWorkspace &ws) override {
     return SetupImpl(output_desc, ws);
@@ -332,12 +329,11 @@ class Operator<GPUBackend> : public OperatorBase {
   // No-op run function that just copies input to output
   inline void RunNoOp(DeviceWorkspace &ws) {
     for (int i = 0; i < spec_.NumRegularInput(); i++) {
-        const auto &input = ws.template InputRef<GPUBackend>(i);
-        auto &output = ws.template OutputRef<GPUBackend>(i);
-        output.Copy(input, ws.stream());
+      const auto &input = ws.template InputRef<GPUBackend>(i);
+      auto &output = ws.template OutputRef<GPUBackend>(i);
+      output.Copy(input, ws.stream());
     }
   }
-
 
   /**
    * @brief Setup of the operator - to be implemented by derived op.
@@ -367,8 +363,8 @@ class Operator<MixedBackend> : public OperatorBase {
 
   inline ~Operator() override {}
 
-  using OperatorBase::Setup;
   using OperatorBase::Run;
+  using OperatorBase::Setup;
 
   bool Setup(std::vector<OutputDesc> &output_desc, const MixedWorkspace &ws) override {
     return SetupImpl(output_desc, ws);
@@ -398,7 +394,6 @@ DALI_DECLARE_OPTYPE_REGISTRY(MixedOperator, OperatorBase);
   int DALI_OPERATOR_SCHEMA_REQUIRED_FOR_##OpName();                                     \
   static int ANONYMIZE_VARIABLE(OpName) = DALI_OPERATOR_SCHEMA_REQUIRED_FOR_##OpName(); \
   DALI_DEFINE_OPTYPE_REGISTERER(OpName, OpType, device##Operator, ::dali::OperatorBase, #device)
-
 
 DLL_PUBLIC std::unique_ptr<OperatorBase> InstantiateOperator(const OpSpec &spec);
 
